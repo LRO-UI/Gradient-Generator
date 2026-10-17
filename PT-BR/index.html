@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gerador de degradê</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='7' y='7' width='18' height='18' transform='rotate(45 16 16)' fill='%233f6fa8' stroke='%23e7eaf0' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=IBM+Plex+Mono:wght@400;500&family=Playfair+Display:wght@400..900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    box-sizing:border-box;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px);
+    color-scheme:dark;
+    --bg:#0d0f14; --panel:#14171f; --panel-edge:#232732;
+    --blue:#3f6fa8; --blue2:#5c7f9e; --steel:#7c8698;
+    --ink:#e7eaf0; --ink-soft:#727c8c; --line:#252a35;
+    --ok:#7fa88a; --danger:#c77a7a;
+    --font-ui:'Space Grotesk', system-ui, sans-serif;
+    --font-display:'Playfair Display', Georgia, serif;
+    --font-mono:'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    --cap:58vh;
+  }
+  /* O tema é escuro por design; mantém escuro em qualquer configuração do visitante */
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){ --bg:#0d0f14; --ink:#e7eaf0; } }
+  :root[data-theme="dark"]{ --bg:#0d0f14; --ink:#e7eaf0; }
+
+  html{ scroll-padding-top:env(safe-area-inset-top,0px); height:100%; }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; height:100%; background:var(--bg); color:var(--ink);
+    font-family:var(--font-ui); display:flex; flex-direction:column;
+  }
+  [hidden]{ display:none !important; }
+
+  header{
+    padding:22px 30px; border-bottom:4px double var(--blue2);
+    display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; flex:none;
+  }
+  header h1{ margin:0; font-family:var(--font-display); font-weight:800; font-size:1.5rem; letter-spacing:.02em; }
+  header p{ margin:0; font-size:.78rem; color:var(--ink-soft); }
+  .app{ display:flex; flex:1; min-height:0; }
+
+  /* Palco */
+  .stage{
+    flex:1 1 0; min-width:0; padding:40px; display:flex; align-items:stretch;
+    border-right:1px solid var(--line); overflow:hidden;
+  }
+  .rail-frame{ position:relative; flex:1; display:flex; min-width:0; }
+  .rail-frame::before, .rail-frame::after{ content:''; position:absolute; pointer-events:none; z-index:2; }
+  .rail-frame::before{ inset:8px; border:1px solid rgba(231,234,240,.6); }
+  .rail-frame::after{ inset:13px; border:1px solid rgba(92,127,158,.35); }
+  .rail-d{
+    position:absolute; width:10px; height:10px; z-index:3;
+    background:var(--blue); border:2px solid var(--bg);
+    transform:translate(-50%,-50%) rotate(45deg);
+    box-shadow:0 0 0 1px rgba(231,234,240,.5);
+  }
+  .rail-d.tl{top:8px; left:8px;} .rail-d.tr{top:8px; left:calc(100% - 8px);}
+  .rail-d.bl{top:calc(100% - 8px); left:8px;} .rail-d.br{top:calc(100% - 8px); left:calc(100% - 8px);}
+
+  .preview{
+    flex:1; margin:34px; display:flex; flex-direction:column; gap:16px;
+    min-width:0; position:relative; z-index:4;
+  }
+  .meta{ display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    font-size:.72rem; letter-spacing:.06em; font-variant-numeric:tabular-nums; }
+  .meta .dims{ color:var(--blue2); }
+  .meta .tip{ color:var(--ink-soft); }
+
+  .canvas-area{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; min-width:0; min-height:0; }
+  .imgbox{
+    position:relative; max-width:100%; background:var(--panel);
+    border:1px solid var(--line); padding:6px;
+    box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--panel-edge);
+  }
+  .imgbox .inner{ position:relative; width:100%; }
+  .imgbox canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .markers{ position:absolute; inset:0; }
+  .markers.mesh{ cursor:crosshair; }
+
+  .mk{
+    position:absolute; width:16px; height:16px; padding:0; margin:0;
+    border:2px solid var(--bg); cursor:grab; touch-action:none;
+    transform:translate(-50%,-50%) rotate(45deg);
+    box-shadow:0 0 0 1px rgba(231,234,240,.85);
+  }
+  .mk.on{ box-shadow:0 0 0 1px #fff, 0 0 0 4px var(--blue); z-index:2; }
+  .mk.drag{ cursor:grabbing; }
+  .mk:focus-visible{ outline:1px solid #fff; outline-offset:5px; }
+  .mk.corner{ cursor:pointer; width:18px; height:18px; }
+  .mk.corner.tl{ left:22px; top:22px; } .mk.corner.tr{ left:calc(100% - 22px); top:22px; }
+  .mk.corner.bl{ left:22px; top:calc(100% - 22px); } .mk.corner.br{ left:calc(100% - 22px); top:calc(100% - 22px); }
+
+  .track{
+    max-width:100%; padding:3px; background:var(--panel); border:1px solid var(--line);
+    box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--panel-edge);
+  }
+  .track-in{ position:relative; height:30px; margin:3px; cursor:copy; }
+  .track-in canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .track-in .mk{ top:50%; }
+
+  /* Painel lateral */
+  .side{
+    flex:0 0 360px; min-width:0; padding:30px 28px 40px;
+    display:flex; flex-direction:column; gap:30px; overflow-y:auto;
+  }
+  .group-title{
+    display:flex; align-items:center; gap:10px;
+    text-transform:uppercase; letter-spacing:.26em; font-size:.66rem;
+    color:var(--ink-soft); margin-bottom:12px;
+  }
+  .group-title::before{ content:''; width:6px; height:6px; background:var(--blue); transform:rotate(45deg); flex:none; }
+  .group-title::after{ content:''; flex:1; height:3px; border-top:1px solid var(--blue); border-bottom:1px solid var(--blue2); }
+  .hint{ font-size:.72rem; color:var(--ink-soft); line-height:1.5; margin-top:10px; }
+
+  button.tool{
+    --c:var(--blue2);
+    border:1px solid var(--line); background:
+      linear-gradient(var(--c),var(--c)) top left/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) top left/1px 8px no-repeat,
+      linear-gradient(var(--c),var(--c)) top right/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) top right/1px 8px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom left/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom left/1px 8px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom right/8px 1px no-repeat,
+      linear-gradient(var(--c),var(--c)) bottom right/1px 8px no-repeat,
+      var(--panel);
+    box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--panel-edge);
+    color:var(--ink); font-family:var(--font-ui); font-size:.76rem;
+    letter-spacing:.06em; padding:12px 8px; cursor:pointer; min-width:0;
+  }
+  button.tool:hover{ --c:#fff; }
+  button.tool:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+  button.tool:disabled{ opacity:.35; cursor:not-allowed; --c:var(--line); }
+  button.tool.on{ --c:#fff; color:#fff; border-color:var(--blue2);
+    box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--blue); }
+  button.tool.preset{ display:flex; flex-direction:column; align-items:center; gap:3px; padding:10px 4px; font-variant-numeric:tabular-nums; }
+  button.tool.preset small{ font-size:.62rem; color:var(--ink-soft); letter-spacing:.04em; }
+
+  .seg{ display:grid; gap:8px; }
+  .seg.c2{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .seg.c3{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .actions{ display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); gap:8px; margin-top:10px; }
+
+  button.generate{
+    width:100%; background:var(--blue); border:1px solid var(--blue2); color:#fff;
+    font-family:var(--font-ui); font-size:.8rem; font-weight:500; text-transform:uppercase; letter-spacing:.24em;
+    padding:22px 10px; cursor:pointer;
+    box-shadow:inset 0 0 0 4px var(--blue), inset 0 0 0 5px rgba(231,234,240,.4);
+  }
+  button.generate:hover{ background:#4a7cb8; box-shadow:inset 0 0 0 4px #4a7cb8, inset 0 0 0 5px rgba(231,234,240,.55); }
+  button.generate:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+  button.generate:disabled{ opacity:.45; cursor:progress; }
+  button.plain{
+    width:100%; margin-top:8px; background:transparent; border:1px solid var(--line);
+    color:var(--ink-soft); font-family:var(--font-ui); font-size:.68rem; text-transform:uppercase;
+    letter-spacing:.2em; padding:11px 10px; cursor:pointer;
+  }
+  button.plain:hover{ color:var(--ink); border-color:var(--blue2); }
+  button.plain:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+  button.plain:disabled{ opacity:.35; cursor:not-allowed; }
+  button.plain.done{ color:var(--ok); border-color:var(--ok); }
+  .status{ font-size:.72rem; color:var(--ink-soft); margin-top:8px; min-height:1.1em; }
+  .status.err{ color:var(--danger); }
+
+  /* Linhas de cor */
+  .list{ display:flex; flex-direction:column; gap:8px; }
+  .row{
+    display:grid; grid-template-columns:40px minmax(0,1fr) auto 30px; gap:10px; align-items:center;
+    background:var(--panel); border:1px solid var(--line); padding:7px 8px 7px 7px;
+    box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--panel-edge);
+  }
+  .row.fixed{ grid-template-columns:40px minmax(0,1fr) auto; }
+  .row.on{ border-color:var(--blue2); box-shadow:inset 0 0 0 3px var(--panel), inset 0 0 0 4px var(--blue); }
+  input.chip{
+    -webkit-appearance:none; appearance:none; width:40px; height:40px; padding:0; margin:0;
+    border:1px solid var(--panel-edge); background:none; cursor:pointer;
+  }
+  input.chip::-webkit-color-swatch-wrapper{ padding:0; }
+  input.chip::-webkit-color-swatch{ border:none; border-radius:0; }
+  input.chip::-moz-color-swatch{ border:none; border-radius:0; }
+  input.chip:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+  .hexin{
+    width:100%; min-width:0; background:transparent; border:0; border-bottom:1px solid var(--line);
+    color:var(--ink); font-family:var(--font-mono); font-size:.86rem; letter-spacing:.03em;
+    padding:5px 0; text-transform:uppercase;
+  }
+  .hexin:focus{ outline:none; border-bottom-color:var(--blue); }
+  .hexin.bad{ border-bottom-color:var(--danger); }
+  .rlabel{ font-size:.7rem; color:var(--ink-soft); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .pos{ display:flex; align-items:center; gap:4px; font-size:.72rem; color:var(--ink-soft); }
+  .num{
+    background:var(--bg); border:1px solid var(--line); color:var(--ink);
+    font-family:var(--font-mono); font-size:.76rem; padding:6px 7px; width:58px; text-align:right;
+    -moz-appearance:textfield; appearance:textfield;
+  }
+  .num::-webkit-inner-spin-button, .num::-webkit-outer-spin-button{ -webkit-appearance:none; margin:0; }
+  .num:focus{ outline:none; border-color:var(--blue); }
+  .ic{
+    width:30px; height:28px; display:grid; place-items:center; cursor:pointer;
+    background:transparent; border:1px solid var(--line); color:var(--ink-soft); padding:0;
+  }
+  .ic svg{ width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.4; stroke-linecap:square; }
+  .ic:hover{ color:var(--ink); border-color:var(--blue2); }
+  .ic:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+  .ic:disabled{ opacity:.3; cursor:not-allowed; }
+
+  /* Campos */
+  .fields{ display:flex; flex-direction:column; gap:16px; }
+  .fields.gap-top{ margin-top:18px; }
+  .field-head{ display:flex; justify-content:space-between; align-items:center; gap:10px;
+    font-size:.76rem; color:var(--ink-soft); margin-bottom:6px; }
+  .field-head label{ color:var(--ink); }
+  input[type=range]{ -webkit-appearance:none; appearance:none; width:100%; height:22px; margin:0; background:transparent; cursor:pointer; }
+  input[type=range]::-webkit-slider-runnable-track{ height:3px; border-top:1px solid var(--blue); border-bottom:1px solid var(--blue2); background:transparent; }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; box-sizing:border-box; width:13px; height:13px; margin-top:-6px;
+    background:var(--ink); border:2px solid var(--bg); box-shadow:0 0 0 1px var(--blue2);
+  }
+  input[type=range]::-moz-range-track{ height:1px; background:var(--blue2); }
+  input[type=range]::-moz-range-thumb{ box-sizing:border-box; width:13px; height:13px; border-radius:0; background:var(--ink); border:2px solid var(--bg); box-shadow:0 0 0 1px var(--blue2); }
+  input[type=range]:focus{ outline:none; }
+  input[type=range]:focus-visible::-webkit-slider-thumb{ box-shadow:0 0 0 1px #fff, 0 0 0 3px var(--blue); }
+  input[type=range]:focus-visible::-moz-range-thumb{ box-shadow:0 0 0 1px #fff, 0 0 0 3px var(--blue); }
+
+  .quick{ display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:4px; margin-top:8px; }
+  .quick button{
+    background:transparent; border:1px solid var(--line); color:var(--ink-soft);
+    font-family:var(--font-mono); font-size:.64rem; padding:6px 0; cursor:pointer;
+  }
+  .quick button:hover{ color:var(--ink); border-color:var(--blue2); }
+  .quick button.on{ color:#fff; border-color:var(--blue); background:rgba(63,111,168,.22); }
+  .quick button:focus-visible{ outline:1px solid #fff; outline-offset:2px; }
+
+  .size-row{ display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) 30px; gap:8px; align-items:end; margin-top:12px; }
+  .size-row label{ display:flex; flex-direction:column; gap:4px; font-size:.66rem; color:var(--ink-soft); letter-spacing:.04em; }
+  .size-row .num{ width:100%; text-align:left; font-size:.82rem; padding:8px; }
+  .size-row .x{ color:var(--ink-soft); padding-bottom:8px; font-size:.8rem; }
+  .size-row .ic{ height:34px; }
+  .sub{ margin-top:14px; }
+
+  @media (max-width:860px){
+    body{ height:auto; min-height:100%; }
+    .app{ flex-direction:column; }
+    header{ padding:18px 20px; }
+    .stage{ border-right:none; border-bottom:1px solid var(--line); padding:18px; overflow:visible; }
+    .preview{ margin:30px 24px; }
+    .side{ flex:none; padding:24px 20px 40px; overflow:visible; }
+    :root{ --cap:44vh; }
+  }
+  @media (max-width:520px){
+    .meta .tip{ display:none; }
+    .quick{ grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .preview{ margin:28px 20px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Gerador de degradê</h1>
+  <p>Combine degradês lineares, de cantos e mesh, adicione granulação e exporte no tamanho que precisar.</p>
+</header>
+
+<div class="app">
+  <div class="stage">
+    <div class="rail-frame">
+      <div class="rail-d tl"></div><div class="rail-d tr"></div>
+      <div class="rail-d bl"></div><div class="rail-d br"></div>
+      <div class="preview">
+        <div class="meta">
+          <div class="dims" id="dims"></div>
+          <div class="tip" id="tip"></div>
+        </div>
+        <div class="canvas-area">
+          <div class="imgbox" id="box">
+            <div class="inner" id="inner">
+              <canvas id="cv" aria-label="Prévia do degradê" role="img"></canvas>
+              <div class="markers" id="markers"></div>
+            </div>
+          </div>
+          <div class="track" id="track">
+            <div class="track-in" id="trackIn" title="Clique para adicionar uma cor aqui">
+              <canvas id="ramp" width="512" height="1" aria-hidden="true"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div>
+      <div class="group-title">Tipo</div>
+      <div class="seg c3" role="group" aria-label="Tipo de degradê">
+        <button class="tool" type="button" data-type="linear">Linear</button>
+        <button class="tool" type="button" data-type="corners">Cantos</button>
+        <button class="tool" type="button" data-type="mesh">Mesh</button>
+      </div>
+      <div class="hint" id="typeHint"></div>
+    </div>
+
+    <div>
+      <div class="group-title">Cores</div>
+      <div class="list" id="list" aria-label="Cores do degradê"></div>
+      <div class="actions">
+        <button class="tool" type="button" id="btnAdd">Adicionar cor</button>
+        <button class="tool" type="button" id="btnReverse">Inverter</button>
+        <button class="tool" type="button" id="btnRotate">Girar</button>
+        <button class="tool" type="button" id="btnScatter">Espalhar</button>
+        <button class="tool" type="button" id="btnRandom">Aleatório</button>
+      </div>
+      <div class="hint" id="countHint"></div>
+
+      <div class="fields gap-top">
+        <div id="softField">
+          <div class="field-head"><label for="soft">Suavidade</label><span id="softVal"></span></div>
+          <input type="range" id="soft" min="0" max="100" step="1">
+        </div>
+        <div>
+          <div class="field-head"><span style="color:var(--ink)">Mistura</span></div>
+          <div class="seg c2" role="group" aria-label="Mistura">
+            <button class="tool" type="button" data-blend="oklab">OKLab</button>
+            <button class="tool" type="button" data-blend="srgb">sRGB</button>
+          </div>
+          <div class="hint">OKLab mantém o meio de cada transição luminoso. sRGB corresponde a um degradê CSS comum.</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="angleGroup">
+      <div class="group-title">Ângulo</div>
+      <div class="field-head">
+        <label for="angle">Direção</label>
+        <span class="pos"><input class="num" type="number" id="angleNum" min="0" max="360" step="1" aria-label="Ângulo em graus">°</span>
+      </div>
+      <input type="range" id="angle" min="0" max="360" step="1">
+      <div class="quick" id="quick" role="group" aria-label="Ângulos comuns"></div>
+      <div class="hint">0° vai de baixo para cima, 90° da esquerda para a direita, igual ao CSS.</div>
+    </div>
+
+    <div>
+      <div class="group-title">Ruído</div>
+      <div class="fields">
+        <div>
+          <div class="field-head"><label for="noiseAmt">Intensidade</label><span id="noiseAmtVal"></span></div>
+          <input type="range" id="noiseAmt" min="0" max="100" step="1">
+        </div>
+        <div>
+          <div class="field-head"><label for="grain">Tamanho do grão</label><span id="grainVal"></span></div>
+          <input type="range" id="grain" min="1" max="8" step="1">
+        </div>
+        <div class="seg c2" role="group" aria-label="Cor do ruído">
+          <button class="tool" type="button" data-mono="1">Mono</button>
+          <button class="tool" type="button" data-mono="0">Colorido</button>
+        </div>
+      </div>
+      <button class="plain" type="button" id="btnSeed">Novo padrão de granulação</button>
+      <div class="hint">O tamanho do grão é medido em pixels da exportação, então a prévia pode parecer mais fina ou mais grossa. Cerca de 4% elimina faixas visíveis.</div>
+    </div>
+
+    <div>
+      <div class="group-title">Exportar</div>
+      <div class="seg c3" id="presets" role="group" aria-label="Tamanhos predefinidos"></div>
+      <div class="size-row">
+        <label>Largura<input class="num" type="number" id="w" min="16" max="8192" step="1"></label>
+        <span class="x">×</span>
+        <label>Altura<input class="num" type="number" id="h" min="16" max="8192" step="1"></label>
+        <button class="ic" type="button" id="btnSwap" aria-label="Trocar largura e altura" title="Trocar largura e altura">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5h10M10 2l3 3-3 3M13 11H3M6 8l-3 3 3 3"/></svg>
+        </button>
+      </div>
+      <div class="seg c3 sub" role="group" aria-label="Formato do arquivo">
+        <button class="tool" type="button" data-fmt="png">PNG</button>
+        <button class="tool" type="button" data-fmt="jpg">JPG</button>
+        <button class="tool" type="button" data-fmt="webp">WebP</button>
+      </div>
+      <div class="sub"><button class="generate" type="button" id="btnExport">Exportar PNG</button></div>
+      <button class="plain" type="button" id="btnCss">Copiar como CSS</button>
+      <div class="status" id="status" aria-live="polite"></div>
+      <div class="hint">Até 8192 px por lado. O CSS está disponível para degradês lineares e não inclui o ruído.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const STORE = 'gradient-generator:v1:pt';
+  const LIMITS = { linear:[2,6], mesh:[3,8] };
+  const MIN_SIDE = 16, MAX_SIDE = 8192;
+  const CORNERS = ['Superior esquerdo','Superior direito','Inferior esquerdo','Inferior direito'];
+  const CORNER_CLS = ['tl','tr','bl','br'];
+  const TYPE_HINT = {
+    linear:'De duas a seis cores ao longo de uma linha. Defina cada posição em porcentagem.',
+    corners:'Uma cor por canto, misturadas por todo o quadro.',
+    mesh:'Pontos livres que se fundem uns nos outros. Arraste-os na prévia.'
+  };
+  const TIP = {
+    linear:'Arraste os marcadores na barra. Clique na barra para adicionar uma cor.',
+    corners:'Clique no marcador de um canto para mudar a cor.',
+    mesh:'Arraste os pontos para movê-los. Clique duas vezes para adicionar um.'
+  };
+  const PRESETS = [
+    [1920,1080,'HD'],[3840,2160,'4K'],[1080,1080,'Quadrado'],
+    [1080,1350,'Retrato 4:5'],[1080,1920,'Story'],[1200,630,'Prévia de link']
+  ];
+  const FORMATS = {
+    png:{ mime:'image/png', ext:'png', label:'PNG' },
+    jpg:{ mime:'image/jpeg', ext:'jpg', label:'JPG', q:.95 },
+    webp:{ mime:'image/webp', ext:'webp', label:'WebP', q:.95 }
+  };
+  const ICON_X = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+
+  const DEFAULT = {
+    type:'linear', blend:'oklab',
+    linear:{ angle:135, stops:[ {c:'#0B1D3A',p:0}, {c:'#3F6FA8',p:48}, {c:'#C9D6E8',p:100} ] },
+    corners:{ c:['#12203D','#5C7F9E','#0D0F14','#A9BCD4'] },
+    mesh:{ soft:60, pts:[
+      {c:'#1D3F72',x:.18,y:.24}, {c:'#8C9AB3',x:.82,y:.18},
+      {c:'#0D0F14',x:.28,y:.86}, {c:'#5C9EC9',x:.76,y:.74}
+    ]},
+    noise:{ amt:4, grain:1, mono:true, seed:7 },
+    size:{ w:1920, h:1080 }, format:'png'
+  };
+
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  const clamp01 = v => clamp(v, 0, 1);
+  const r3 = v => Math.round(v * 1000) / 1000;
+  const r1 = v => Math.round(v * 10) / 10;
+
+  /* ---------- estado ---------- */
+  function normHex(v){
+    let s = String(v == null ? '' : v).trim().replace(/^#/, '');
+    if(/^[0-9a-f]{3}$/i.test(s)) s = s.split('').map(c => c + c).join('');
+    return /^[0-9a-f]{6}$/i.test(s) ? '#' + s.toUpperCase() : null;
+  }
+  function sanitize(o){
+    const d = clone(DEFAULT);
+    if(!o || typeof o !== 'object') return d;
+    if(['linear','corners','mesh'].includes(o.type)) d.type = o.type;
+    if(['oklab','srgb'].includes(o.blend)) d.blend = o.blend;
+    if(o.linear){
+      if(Number.isFinite(o.linear.angle)) d.linear.angle = clamp(Math.round(o.linear.angle), 0, 360);
+      const st = Array.isArray(o.linear.stops) ? o.linear.stops
+        .map(s => ({ c:normHex(s && s.c), p:Number(s && s.p) }))
+        .filter(s => s.c && Number.isFinite(s.p)).map(s => ({ c:s.c, p:clamp(r1(s.p), 0, 100) })) : [];
+      if(st.length >= 2 && st.length <= 6) d.linear.stops = st.sort((a, b) => a.p - b.p);
+    }
+    if(o.corners && Array.isArray(o.corners.c)){
+      const c = o.corners.c.map(normHex);
+      if(c.length === 4 && c.every(Boolean)) d.corners.c = c;
+    }
+    if(o.mesh){
+      if(Number.isFinite(o.mesh.soft)) d.mesh.soft = clamp(Math.round(o.mesh.soft), 0, 100);
+      const pts = Array.isArray(o.mesh.pts) ? o.mesh.pts
+        .map(p => ({ c:normHex(p && p.c), x:Number(p && p.x), y:Number(p && p.y) }))
+        .filter(p => p.c && Number.isFinite(p.x) && Number.isFinite(p.y))
+        .map(p => ({ c:p.c, x:clamp01(p.x), y:clamp01(p.y) })) : [];
+      if(pts.length >= 3 && pts.length <= 8) d.mesh.pts = pts;
+    }
+    if(o.noise){
+      if(Number.isFinite(o.noise.amt)) d.noise.amt = clamp(Math.round(o.noise.amt), 0, 100);
+      if(Number.isFinite(o.noise.grain)) d.noise.grain = clamp(Math.round(o.noise.grain), 1, 8);
+      if(typeof o.noise.mono === 'boolean') d.noise.mono = o.noise.mono;
+      if(Number.isFinite(o.noise.seed)) d.noise.seed = o.noise.seed | 0;
+    }
+    if(o.size && Number.isFinite(o.size.w) && Number.isFinite(o.size.h)){
+      d.size.w = clamp(Math.round(o.size.w), MIN_SIDE, MAX_SIDE);
+      d.size.h = clamp(Math.round(o.size.h), MIN_SIDE, MAX_SIDE);
+    }
+    if(FORMATS[o.format]) d.format = o.format;
+    return d;
+  }
+  function load(){
+    try { const raw = localStorage.getItem(STORE); return raw ? sanitize(JSON.parse(raw)) : null; }
+    catch(e){ return null; }
+  }
+  let saveTimer = 0;
+  function save(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try { localStorage.setItem(STORE, JSON.stringify(S)); } catch(e){}
+    }, 250);
+  }
+
+  const S = load() || clone(DEFAULT);
+  let sel = 0;
+
+  /* ---------- cálculo de cores ---------- */
+  const hexToRgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+  const toLin = c => { c /= 255; return c <= .04045 ? c / 12.92 : Math.pow((c + .055) / 1.055, 2.4); };
+  const ENC_N = 8192, ENC = new Float32Array(ENC_N + 1);
+  for(let i = 0; i <= ENC_N; i++){
+    const l = i / ENC_N;
+    ENC[i] = 255 * (l <= .0031308 ? 12.92 * l : 1.055 * Math.pow(l, 1 / 2.4) - .055);
+  }
+  function rgbToOklab(rgb){
+    const r = toLin(rgb[0]), g = toLin(rgb[1]), b = toLin(rgb[2]);
+    const l = Math.cbrt(.4122214708 * r + .5363325363 * g + .0514459929 * b);
+    const m = Math.cbrt(.2119034982 * r + .6806995451 * g + .1073969566 * b);
+    const s = Math.cbrt(.0883024619 * r + .2817188376 * g + .6299787005 * b);
+    return [
+      .2104542553 * l + .7936177850 * m - .0040720468 * s,
+      1.9779984951 * l - 2.4285922050 * m + .4505937099 * s,
+      .0259040371 * l + .7827717662 * m - .8086757660 * s
+    ];
+  }
+  const toSpace = (hex, ok) => { const rgb = hexToRgb(hex); return ok ? rgbToOklab(rgb) : [rgb[0] / 255, rgb[1] / 255, rgb[2] / 255]; };
+  const enc = v => ENC[v <= 0 ? 0 : v >= 1 ? ENC_N : (v * ENC_N + .5) | 0];
+
+  /* trio no espaço de mistura -> sRGB 0..255 gravado em out[o..o+2] */
+  function fromSpace(ok, c0, c1, c2, out, o){
+    if(!ok){ out[o] = c0 * 255; out[o + 1] = c1 * 255; out[o + 2] = c2 * 255; return; }
+    let l = c0 + .3963377774 * c1 + .2158037573 * c2;
+    let m = c0 - .1055613458 * c1 - .0638541728 * c2;
+    let s = c0 - .0894841775 * c1 - 1.2914855480 * c2;
+    l = l * l * l; m = m * m * m; s = s * s * s;
+    out[o]     = enc( 4.0767416621 * l - 3.3077115913 * m + .2309699292 * s);
+    out[o + 1] = enc(-1.2684380046 * l + 2.6097574011 * m - .3413193965 * s);
+    out[o + 2] = enc(-.0041960863 * l - .7034186147 * m + 1.7076147010 * s);
+  }
+  const hex2 = v => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0');
+  const rgbHex = (r, g, b) => ('#' + hex2(r) + hex2(g) + hex2(b)).toUpperCase();
+
+  /* ---------- ruído ---------- */
+  function hash(x, y, s){
+    let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ Math.imul(s, 0x9e3779b1);
+    h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  }
+  const tri = (x, y, s) => hash(x, y, s) + hash(x, y, s + 977) - 1;
+
+  /* ---------- modelo do degradê ---------- */
+  const RAMP_N = 4096;
+  function makeRamp(ok){
+    const st = S.linear.stops.map(s => ({ p:s.p / 100, c:toSpace(s.c, ok) })).sort((a, b) => a.p - b.p);
+    const out = new Float32Array(RAMP_N * 3), last = st.length - 1;
+    let k = 0;
+    for(let i = 0; i < RAMP_N; i++){
+      const t = i / (RAMP_N - 1);
+      let c;
+      if(t <= st[0].p) c = st[0].c;
+      else if(t >= st[last].p) c = st[last].c;
+      else {
+        while(k < last - 1 && t > st[k + 1].p) k++;
+        const A = st[k], B = st[k + 1], f = B.p === A.p ? 0 : (t - A.p) / (B.p - A.p);
+        c = [A.c[0] + (B.c[0] - A.c[0]) * f, A.c[1] + (B.c[1] - A.c[1]) * f, A.c[2] + (B.c[2] - A.c[2]) * f];
+      }
+      fromSpace(ok, c[0], c[1], c[2], out, i * 3);
+    }
+    return out;
+  }
+
+  function buildCfg(W, H){
+    const ok = S.blend === 'oklab';
+    const cfg = { type:S.type, ok, W, H, noise:S.noise };
+    if(S.type === 'linear'){
+      const a = S.linear.angle * Math.PI / 180;
+      cfg.sin = Math.sin(a); cfg.cos = Math.cos(a);
+      cfg.len = Math.abs(W * cfg.sin) + Math.abs(H * cfg.cos) || 1;
+      cfg.ramp = makeRamp(ok);
+    } else if(S.type === 'corners'){
+      cfg.cs = S.corners.c.map(h => toSpace(h, ok));
+    } else {
+      cfg.pts = S.mesh.pts.map(p => ({ x:p.x, y:p.y, c:toSpace(p.c, ok) }));
+      const sig = .07 + (S.mesh.soft / 100) * .5;
+      cfg.inv = 1 / (2 * sig * sig);
+      cfg.sa = Math.sqrt(W / H);
+      cfg.e = new Float64Array(cfg.pts.length);
+    }
+    return cfg;
+  }
+
+  /* cor do degradê (sem ruído) em u,v normalizados, gravada em px[0..2] */
+  function evalColor(cfg, u, v, px){
+    if(cfg.type === 'linear'){
+      const t = ((u - .5) * cfg.W * cfg.sin - (v - .5) * cfg.H * cfg.cos) / cfg.len + .5;
+      const i = (t <= 0 ? 0 : t >= 1 ? RAMP_N - 1 : (t * (RAMP_N - 1) + .5) | 0) * 3;
+      px[0] = cfg.ramp[i]; px[1] = cfg.ramp[i + 1]; px[2] = cfg.ramp[i + 2];
+    } else if(cfg.type === 'corners'){
+      const c = cfg.cs, iu = 1 - u, iv = 1 - v;
+      const w0 = iu * iv, w1 = u * iv, w2 = iu * v, w3 = u * v;
+      fromSpace(cfg.ok,
+        c[0][0] * w0 + c[1][0] * w1 + c[2][0] * w2 + c[3][0] * w3,
+        c[0][1] * w0 + c[1][1] * w1 + c[2][1] * w2 + c[3][1] * w3,
+        c[0][2] * w0 + c[1][2] * w1 + c[2][2] * w2 + c[3][2] * w3, px, 0);
+    } else {
+      const P = cfg.pts, n = P.length, e = cfg.e;
+      let mx = -Infinity;
+      for(let i = 0; i < n; i++){
+        const dx = (u - P[i].x) * cfg.sa, dy = (v - P[i].y) / cfg.sa;
+        const q = -(dx * dx + dy * dy) * cfg.inv;
+        e[i] = q; if(q > mx) mx = q;
+      }
+      let s = 0, a0 = 0, a1 = 0, a2 = 0;
+      for(let i = 0; i < n; i++){
+        const w = Math.exp(e[i] - mx), c = P[i].c;
+        s += w; a0 += w * c[0]; a1 += w * c[1]; a2 += w * c[2];
+      }
+      fromSpace(cfg.ok, a0 / s, a1 / s, a2 / s, px, 0);
+    }
+  }
+
+  function renderRows(d, outW, outH, y0, rows, cfg){
+    const px = new Float32Array(3);
+    const nz = cfg.noise, amp = nz.amt * .9, g = Math.max(1, nz.grain | 0), seed = nz.seed | 0, mono = nz.mono;
+    const W = cfg.W, H = cfg.H;
+    let o = 0;
+    for(let yy = 0; yy < rows; yy++){
+      const v = (y0 + yy + .5) / outH;
+      const ey = Math.floor(v * H / g);
+      for(let x = 0; x < outW; x++){
+        const u = (x + .5) / outW;
+        evalColor(cfg, u, v, px);
+        let r = px[0], gg = px[1], b = px[2];
+        if(amp > 0){
+          const ex = Math.floor(u * W / g);
+          if(mono){ const n = tri(ex, ey, seed) * amp; r += n; gg += n; b += n; }
+          else { r += tri(ex, ey, seed) * amp; gg += tri(ex, ey, seed + 101) * amp; b += tri(ex, ey, seed + 211) * amp; }
+        }
+        d[o] = r; d[o + 1] = gg; d[o + 2] = b; d[o + 3] = 255;
+        o += 4;
+      }
+    }
+  }
+
+  function sampleHex(u, v){
+    const cfg = buildCfg(S.size.w, S.size.h), px = new Float32Array(3);
+    evalColor(cfg, u, v, px);
+    return rgbHex(px[0], px[1], px[2]);
+  }
+  function rampHex(t){
+    const ramp = makeRamp(S.blend === 'oklab'), i = Math.round(clamp01(t) * (RAMP_N - 1)) * 3;
+    return rgbHex(ramp[i], ramp[i + 1], ramp[i + 2]);
+  }
+
+  /* ---------- prévia ---------- */
+  let raf = 0, fullTimer = 0;
+  function draw(fast){
+    if(raf) cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      raf = 0; paint(fast);
+      clearTimeout(fullTimer);
+      if(fast) fullTimer = setTimeout(() => paint(false), 150);
+    });
+  }
+  function paint(fast){
+    const inner = $('inner'), cw = inner.clientWidth, ch = inner.clientHeight;
+    if(!cw || !ch) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    let pw = cw * dpr, ph = ch * dpr;
+    const k = Math.min(1, 1500 / Math.max(pw, ph)) * (fast ? .5 : 1);
+    pw = Math.max(1, Math.round(pw * k)); ph = Math.max(1, Math.round(ph * k));
+    const cv = $('cv');
+    if(cv.width !== pw || cv.height !== ph){ cv.width = pw; cv.height = ph; }
+    const ctx = cv.getContext('2d'), img = ctx.createImageData(pw, ph);
+    const cfg = buildCfg(S.size.w, S.size.h);
+    renderRows(img.data, pw, ph, 0, ph, cfg);
+    ctx.putImageData(img, 0, 0);
+    if(S.type === 'linear') paintRamp(cfg.ramp);
+  }
+  function paintRamp(ramp){
+    const rc = $('ramp'), ctx = rc.getContext('2d'), n = rc.width, img = ctx.createImageData(n, 1);
+    for(let x = 0; x < n; x++){
+      const i = Math.round(x / (n - 1) * (RAMP_N - 1)) * 3, o = x * 4;
+      img.data[o] = ramp[i]; img.data[o + 1] = ramp[i + 1]; img.data[o + 2] = ramp[i + 2]; img.data[o + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+  function layoutBox(){
+    const { w, h } = S.size, ar = (w / h).toFixed(5);
+    $('inner').style.aspectRatio = w + ' / ' + h;
+    const width = 'min(100%, calc(var(--cap) * ' + ar + ' + 14px))';
+    $('box').style.width = width;
+    $('track').style.width = 'min(100%, max(280px, calc(var(--cap) * ' + ar + ' + 14px)))';
+  }
+
+  /* ---------- itens ---------- */
+  function count(){ return S.type === 'linear' ? S.linear.stops.length : S.type === 'corners' ? 4 : S.mesh.pts.length; }
+  function getColor(i){
+    return S.type === 'linear' ? S.linear.stops[i].c : S.type === 'corners' ? S.corners.c[i] : S.mesh.pts[i].c;
+  }
+  function setColor(i, v){
+    if(S.type === 'linear') S.linear.stops[i].c = v;
+    else if(S.type === 'corners') S.corners.c[i] = v;
+    else S.mesh.pts[i].c = v;
+    const mk = markerEl(i); if(mk){ mk.style.background = v; labelMarker(mk, i); }
+  }
+  const markerEl = i => document.querySelector('.mk[data-i="' + i + '"]');
+  const rowEl = i => document.querySelector('.row[data-i="' + i + '"]');
+
+  function describe(i){
+    const c = getColor(i);
+    if(S.type === 'linear') return 'Cor ' + (i + 1) + ', ' + c + ', em ' + S.linear.stops[i].p + '%';
+    if(S.type === 'corners') return CORNERS[i] + ', ' + c;
+    const p = S.mesh.pts[i];
+    return 'Ponto ' + (i + 1) + ', ' + c + ', em ' + Math.round(p.x * 100) + '% na horizontal, ' + Math.round(p.y * 100) + '% na vertical';
+  }
+  function labelMarker(mk, i){ mk.setAttribute('aria-label', describe(i) + '. Pressione Enter para mudar a cor.'); }
+
+  function select(i){
+    sel = i;
+    document.querySelectorAll('.row').forEach(r => r.classList.toggle('on', +r.dataset.i === i));
+    document.querySelectorAll('.mk').forEach(m => m.classList.toggle('on', +m.dataset.i === i));
+  }
+
+  function syncRow(i){
+    const row = rowEl(i);
+    if(row){
+      if(S.type === 'linear'){ const n = row.querySelector('.num'); if(n && document.activeElement !== n) n.value = S.linear.stops[i].p; }
+      if(S.type === 'mesh'){ const p = S.mesh.pts[i]; row.querySelector('.rlabel').textContent = Math.round(p.x * 100) + ', ' + Math.round(p.y * 100); }
+    }
+    const mk = markerEl(i); if(mk) labelMarker(mk, i);
+  }
+
+  function openPicker(i){
+    select(i);
+    const row = rowEl(i); if(!row) return;
+    row.scrollIntoView({ block:'nearest' });
+    const inp = row.querySelector('input.chip');
+    try { if(inp.showPicker) inp.showPicker(); else inp.click(); }
+    catch(e){ try { inp.click(); } catch(_){} }
+  }
+
+  /* ---------- marcadores ---------- */
+  function renderMarkers(){
+    const layer = $('markers'), trackIn = $('trackIn');
+    layer.innerHTML = '';
+    trackIn.querySelectorAll('.mk').forEach(m => m.remove());
+    layer.className = 'markers' + (S.type === 'mesh' ? ' mesh' : '');
+    $('track').hidden = S.type !== 'linear';
+
+    const make = (i, cls) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'mk' + (cls ? ' ' + cls : '') + (i === sel ? ' on' : '');
+      b.dataset.i = i; b.style.background = getColor(i);
+      labelMarker(b, i);
+      return b;
+    };
+    if(S.type === 'linear'){
+      S.linear.stops.forEach((s, i) => {
+        const b = make(i); b.style.left = s.p + '%';
+        trackIn.appendChild(b); bindMarker(b, i, 'stop');
+      });
+    } else if(S.type === 'corners'){
+      CORNER_CLS.forEach((c, i) => {
+        const b = make(i, 'corner ' + c);
+        layer.appendChild(b);
+        b.addEventListener('click', () => openPicker(i));
+      });
+    } else {
+      S.mesh.pts.forEach((p, i) => {
+        const b = make(i); b.style.left = p.x * 100 + '%'; b.style.top = p.y * 100 + '%';
+        layer.appendChild(b); bindMarker(b, i, 'mesh');
+      });
+    }
+  }
+
+  function bindMarker(el, i, kind){
+    let start = null, moved = false;
+    const area = () => (kind === 'mesh' ? $('markers') : $('trackIn')).getBoundingClientRect();
+    el.addEventListener('pointerdown', e => {
+      if(e.button !== 0) return;
+      e.preventDefault(); el.focus({ preventScroll:true });
+      el.setPointerCapture(e.pointerId);
+      start = { x:e.clientX, y:e.clientY }; moved = false;
+      select(i);
+    });
+    el.addEventListener('pointermove', e => {
+      if(!start) return;
+      if(!moved && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 3) return;
+      moved = true; el.classList.add('drag');
+      const r = area(), x = clamp01((e.clientX - r.left) / r.width);
+      if(kind === 'mesh'){
+        const y = clamp01((e.clientY - r.top) / r.height), p = S.mesh.pts[i];
+        p.x = r3(x); p.y = r3(y);
+        el.style.left = p.x * 100 + '%'; el.style.top = p.y * 100 + '%';
+      } else {
+        const s = S.linear.stops[i];
+        s.p = Math.round(x * 100);
+        el.style.left = s.p + '%';
+      }
+      syncRow(i); draw(true);
+    });
+    const end = () => {
+      if(!start) return;
+      start = null; el.classList.remove('drag');
+      if(moved){ el.dataset.moved = '1'; save(); draw(false); }
+    };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    el.addEventListener('click', () => {
+      if(el.dataset.moved){ delete el.dataset.moved; return; }
+      openPicker(i);
+    });
+    el.addEventListener('keydown', e => {
+      const step = e.shiftKey ? 5 : 1;
+      let dx = 0, dy = 0;
+      if(e.key === 'ArrowLeft') dx = -step;
+      else if(e.key === 'ArrowRight') dx = step;
+      else if(e.key === 'ArrowUp') dy = -step;
+      else if(e.key === 'ArrowDown') dy = step;
+      else if(e.key === 'Delete' || e.key === 'Backspace'){ e.preventDefault(); removeAt(i); return; }
+      else return;
+      e.preventDefault();
+      if(kind === 'mesh'){
+        const p = S.mesh.pts[i];
+        p.x = r3(clamp01(p.x + dx / 100)); p.y = r3(clamp01(p.y + dy / 100));
+        el.style.left = p.x * 100 + '%'; el.style.top = p.y * 100 + '%';
+      } else {
+        const s = S.linear.stops[i];
+        s.p = clamp(Math.round(s.p + (dx || -dy)), 0, 100);
+        el.style.left = s.p + '%';
+      }
+      select(i); syncRow(i); draw(); save();
+    });
+  }
+
+  /* ---------- lista de cores ---------- */
+  function renderList(){
+    const list = $('list'); list.innerHTML = '';
+    const n = count(), removable = S.type !== 'corners';
+    const min = removable ? LIMITS[S.type][0] : 4;
+    for(let i = 0; i < n; i++){
+      const row = document.createElement('div');
+      row.className = 'row' + (removable ? '' : ' fixed') + (i === sel ? ' on' : '');
+      row.dataset.i = i;
+
+      const chip = document.createElement('input');
+      chip.type = 'color'; chip.className = 'chip'; chip.value = getColor(i).toLowerCase();
+      chip.setAttribute('aria-label', 'Escolher a cor ' + (i + 1));
+
+      const hex = document.createElement('input');
+      hex.type = 'text'; hex.className = 'hexin'; hex.value = getColor(i);
+      hex.maxLength = 7; hex.spellcheck = false; hex.autocomplete = 'off';
+      hex.setAttribute('aria-label', 'Código HEX da cor ' + (i + 1));
+
+      chip.addEventListener('input', () => { const v = chip.value.toUpperCase(); setColor(i, v); hex.value = v; hex.classList.remove('bad'); draw(true); });
+      chip.addEventListener('change', () => { save(); draw(); });
+      hex.addEventListener('input', () => {
+        const v = normHex(hex.value);
+        hex.classList.toggle('bad', !v && hex.value.trim().length > 0);
+        if(v){ setColor(i, v); chip.value = v.toLowerCase(); draw(); save(); }
+      });
+      hex.addEventListener('blur', () => { hex.value = getColor(i); hex.classList.remove('bad'); });
+      hex.addEventListener('keydown', e => { if(e.key === 'Enter') hex.blur(); });
+
+      row.append(chip, hex);
+
+      if(S.type === 'linear'){
+        const pos = document.createElement('span'); pos.className = 'pos';
+        const num = document.createElement('input');
+        num.type = 'number'; num.className = 'num'; num.min = 0; num.max = 100; num.step = 1;
+        num.value = S.linear.stops[i].p;
+        num.setAttribute('aria-label', 'Posição da cor ' + (i + 1) + ' em porcentagem');
+        num.addEventListener('input', () => {
+          const v = parseFloat(num.value); if(!Number.isFinite(v)) return;
+          S.linear.stops[i].p = clamp(r1(v), 0, 100);
+          const mk = markerEl(i); if(mk){ mk.style.left = S.linear.stops[i].p + '%'; labelMarker(mk, i); }
+          draw(); save();
+        });
+        num.addEventListener('change', () => { num.value = S.linear.stops[i].p; });
+        pos.append(num, document.createTextNode('%'));
+        row.appendChild(pos);
+      } else {
+        const lab = document.createElement('span'); lab.className = 'rlabel';
+        if(S.type === 'corners') lab.textContent = CORNERS[i];
+        else { const p = S.mesh.pts[i]; lab.textContent = Math.round(p.x * 100) + ', ' + Math.round(p.y * 100); lab.title = 'Posição horizontal, vertical (%)'; }
+        row.appendChild(lab);
+      }
+
+      if(removable){
+        const rm = document.createElement('button');
+        rm.type = 'button'; rm.className = 'ic'; rm.innerHTML = ICON_X;
+        rm.setAttribute('aria-label', 'Remover a cor ' + (i + 1)); rm.title = 'Remover';
+        rm.disabled = n <= min;
+        rm.addEventListener('click', () => removeAt(i));
+        row.appendChild(rm);
+      }
+      row.addEventListener('focusin', () => select(i));
+      row.addEventListener('pointerdown', () => select(i));
+      list.appendChild(row);
+    }
+  }
+
+  /* ---------- edições estruturais ---------- */
+  function sortStops(){
+    const st = S.linear.stops, keep = st[sel];
+    st.sort((a, b) => a.p - b.p);
+    sel = Math.max(0, st.indexOf(keep));
+  }
+  function addColor(at){
+    if(S.type === 'linear'){
+      const st = S.linear.stops; if(st.length >= LIMITS.linear[1]) return;
+      let p = at;
+      if(p == null){
+        const ps = st.map(s => s.p).sort((a, b) => a - b);
+        let best = -1, gap = -1;
+        const edges = [0, ...ps, 100];
+        for(let k = 0; k < edges.length - 1; k++){ const g = edges[k + 1] - edges[k]; if(g > gap){ gap = g; best = k; } }
+        p = Math.round((edges[best] + edges[best + 1]) / 2);
+      }
+      const stop = { c:rampHex(p / 100), p };
+      st.push(stop); st.sort((a, b) => a.p - b.p); sel = st.indexOf(stop);
+    } else if(S.type === 'mesh'){
+      const pts = S.mesh.pts; if(pts.length >= LIMITS.mesh[1]) return;
+      let x, y;
+      if(at){ x = at.x; y = at.y; }
+      else {
+        let bestD = -1;
+        for(let t = 0; t < 40; t++){
+          const cx = .1 + Math.random() * .8, cy = .1 + Math.random() * .8;
+          const d = Math.min(...pts.map(q => Math.hypot(q.x - cx, q.y - cy)));
+          if(d > bestD){ bestD = d; x = cx; y = cy; }
+        }
+      }
+      const pt = { c:sampleHex(x, y), x:r3(x), y:r3(y) };
+      pts.push(pt); sel = pts.length - 1;
+    }
+    renderAll(); save();
+  }
+  function removeAt(i){
+    if(S.type === 'corners') return;
+    const arr = S.type === 'linear' ? S.linear.stops : S.mesh.pts;
+    if(arr.length <= LIMITS[S.type][0]){ say('Mantenha pelo menos ' + LIMITS[S.type][0] + ' cores neste tipo.'); return; }
+    arr.splice(i, 1);
+    sel = Math.min(sel, arr.length - 1);
+    renderAll(); save();
+    const mk = markerEl(sel); if(mk) mk.focus({ preventScroll:true });
+  }
+  function oklabHex(L, a, b){
+    const px = new Float32Array(3); fromSpace(true, L, a, b, px, 0);
+    return rgbHex(px[0], px[1], px[2]);
+  }
+  function randomPalette(n){
+    const h0 = Math.random() * 360, spread = 22 + Math.random() * 48, dir = Math.random() < .5 ? -1 : 1;
+    const out = [];
+    for(let i = 0; i < n; i++){
+      const t = n === 1 ? 0 : i / (n - 1);
+      const L = clamp(.2 + t * .64 + (Math.random() - .5) * .06, .12, .95);
+      const C = .04 + Math.random() * .12;
+      const h = (h0 + dir * spread * i) * Math.PI / 180;
+      out.push(oklabHex(L, C * Math.cos(h), C * Math.sin(h)));
+    }
+    return out;
+  }
+  function shuffle(a){ for(let i = a.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
+  function scatter(){
+    const pts = S.mesh.pts, placed = [];
+    pts.forEach(p => {
+      let bx = .5, by = .5, bestD = -1;
+      for(let t = 0; t < 40; t++){
+        const cx = .08 + Math.random() * .84, cy = .08 + Math.random() * .84;
+        const d = placed.length ? Math.min(...placed.map(q => Math.hypot(q[0] - cx, q[1] - cy))) : 1;
+        if(d > bestD){ bestD = d; bx = cx; by = cy; }
+      }
+      placed.push([bx, by]); p.x = r3(bx); p.y = r3(by);
+    });
+  }
+
+  $('btnAdd').addEventListener('click', () => addColor());
+  $('btnReverse').addEventListener('click', () => {
+    S.linear.stops.forEach(s => { s.p = r1(100 - s.p); }); sortStops(); renderAll(); save();
+  });
+  $('btnRotate').addEventListener('click', () => {
+    const c = S.corners.c; S.corners.c = [c[2], c[0], c[3], c[1]]; renderAll(); save();
+  });
+  $('btnScatter').addEventListener('click', () => { scatter(); renderAll(); save(); });
+  $('btnRandom').addEventListener('click', () => {
+    if(S.type === 'linear'){ const p = randomPalette(S.linear.stops.length); sortStops(); S.linear.stops.forEach((s, i) => s.c = p[i]); }
+    else if(S.type === 'corners') S.corners.c = shuffle(randomPalette(4));
+    else { const p = shuffle(randomPalette(S.mesh.pts.length)); S.mesh.pts.forEach((q, i) => q.c = p[i]); }
+    renderAll(); save();
+  });
+
+  $('trackIn').addEventListener('click', e => {
+    if(e.target.closest('.mk')) return;
+    if(S.linear.stops.length >= LIMITS.linear[1]){ say('Degradês lineares aceitam até 6 cores.'); return; }
+    const r = $('trackIn').getBoundingClientRect();
+    addColor(Math.round(clamp01((e.clientX - r.left) / r.width) * 100));
+  });
+  $('markers').addEventListener('dblclick', e => {
+    if(S.type !== 'mesh' || e.target !== $('markers')) return;
+    if(S.mesh.pts.length >= LIMITS.mesh[1]){ say('Degradês mesh aceitam até 8 pontos.'); return; }
+    const r = $('markers').getBoundingClientRect();
+    addColor({ x:clamp01((e.clientX - r.left) / r.width), y:clamp01((e.clientY - r.top) / r.height) });
+  });
+
+  /* ---------- controles ---------- */
+  document.querySelectorAll('[data-type]').forEach(b => b.addEventListener('click', () => {
+    if(S.type === b.dataset.type) return;
+    S.type = b.dataset.type; sel = 0; renderAll(); save();
+  }));
+  document.querySelectorAll('[data-blend]').forEach(b => b.addEventListener('click', () => {
+    S.blend = b.dataset.blend; updateControls(); draw(); save();
+  }));
+  document.querySelectorAll('[data-mono]').forEach(b => b.addEventListener('click', () => {
+    S.noise.mono = b.dataset.mono === '1'; updateControls(); draw(); save();
+  }));
+  document.querySelectorAll('[data-fmt]').forEach(b => b.addEventListener('click', () => {
+    S.format = b.dataset.fmt; updateControls(); save();
+  }));
+
+  const QUICK = [0,45,90,135,180,225,270,315];
+  QUICK.forEach(a => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = a + '°'; b.dataset.a = a;
+    b.setAttribute('aria-label', a + ' graus');
+    b.addEventListener('click', () => setAngle(a));
+    $('quick').appendChild(b);
+  });
+  function setAngle(a, fast){
+    S.linear.angle = clamp(Math.round(a), 0, 360);
+    $('angle').value = S.linear.angle;
+    if(document.activeElement !== $('angleNum')) $('angleNum').value = S.linear.angle;
+    $('quick').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.a === S.linear.angle % 360));
+    draw(fast); save();
+  }
+  $('angle').addEventListener('input', e => setAngle(+e.target.value, true));
+  $('angleNum').addEventListener('input', e => { const v = parseFloat(e.target.value); if(Number.isFinite(v)) setAngle(clamp(v, 0, 360)); });
+  $('angleNum').addEventListener('change', e => { e.target.value = S.linear.angle; });
+
+  $('soft').addEventListener('input', e => { S.mesh.soft = +e.target.value; $('softVal').textContent = S.mesh.soft; draw(true); save(); });
+  $('noiseAmt').addEventListener('input', e => { S.noise.amt = +e.target.value; $('noiseAmtVal').textContent = S.noise.amt + '%'; draw(true); save(); });
+  $('grain').addEventListener('input', e => { S.noise.grain = +e.target.value; $('grainVal').textContent = S.noise.grain + ' px'; draw(true); save(); });
+  $('btnSeed').addEventListener('click', () => { S.noise.seed = (Math.random() * 2147483647) | 0; draw(); save(); });
+
+  PRESETS.forEach(([w, h, name]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'tool preset'; b.dataset.w = w; b.dataset.h = h;
+    b.innerHTML = '<span>' + w + ' × ' + h + '</span><small>' + name + '</small>';
+    b.addEventListener('click', () => setSize(w, h));
+    $('presets').appendChild(b);
+  });
+  function setSize(w, h){
+    S.size.w = clamp(Math.round(w), MIN_SIDE, MAX_SIDE);
+    S.size.h = clamp(Math.round(h), MIN_SIDE, MAX_SIDE);
+    layoutBox(); updateControls(); draw(); save();
+  }
+  ['w','h'].forEach(k => {
+    const inp = $(k);
+    inp.addEventListener('change', () => {
+      const v = parseFloat(inp.value);
+      if(!Number.isFinite(v)){ inp.value = S.size[k]; return; }
+      if(v > MAX_SIDE) say('O lado maior pode ter até ' + MAX_SIDE + ' px.');
+      if(k === 'w') setSize(v, S.size.h); else setSize(S.size.w, v);
+    });
+    inp.addEventListener('keydown', e => { if(e.key === 'Enter') inp.blur(); });
+  });
+  $('btnSwap').addEventListener('click', () => setSize(S.size.h, S.size.w));
+
+  /* ---------- sincroniza a interface ---------- */
+  function updateControls(){
+    document.querySelectorAll('[data-type]').forEach(b => { const on = b.dataset.type === S.type; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+    document.querySelectorAll('[data-blend]').forEach(b => { const on = b.dataset.blend === S.blend; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+    document.querySelectorAll('[data-mono]').forEach(b => { const on = (b.dataset.mono === '1') === S.noise.mono; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+    document.querySelectorAll('[data-fmt]').forEach(b => { const on = b.dataset.fmt === S.format; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+    $('presets').querySelectorAll('button').forEach(b => {
+      const on = +b.dataset.w === S.size.w && +b.dataset.h === S.size.h;
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+    });
+
+    $('typeHint').textContent = TYPE_HINT[S.type];
+    $('tip').textContent = TIP[S.type];
+    $('angleGroup').hidden = S.type !== 'linear';
+    $('softField').hidden = S.type !== 'mesh';
+    $('btnAdd').hidden = S.type === 'corners';
+    $('btnReverse').hidden = S.type !== 'linear';
+    $('btnRotate').hidden = S.type !== 'corners';
+    $('btnScatter').hidden = S.type !== 'mesh';
+    $('btnCss').disabled = S.type !== 'linear';
+
+    const n = count();
+    if(S.type === 'corners') $('countHint').textContent = 'Girar move as quatro cores no sentido horário.';
+    else {
+      const [mn, mx] = LIMITS[S.type];
+      $('btnAdd').disabled = n >= mx;
+      $('countHint').textContent = n + ' de ' + mx + ' cores. ' + (n >= mx ? 'Remova uma para adicionar outra.' : 'Novas cores assumem o tom que já existe no ponto.');
+    }
+
+    $('angle').value = S.linear.angle; $('angleNum').value = S.linear.angle;
+    $('quick').querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.a === S.linear.angle % 360));
+    $('soft').value = S.mesh.soft; $('softVal').textContent = S.mesh.soft;
+    $('noiseAmt').value = S.noise.amt; $('noiseAmtVal').textContent = S.noise.amt + '%';
+    $('grain').value = S.noise.grain; $('grainVal').textContent = S.noise.grain + ' px';
+    if(document.activeElement !== $('w')) $('w').value = S.size.w;
+    if(document.activeElement !== $('h')) $('h').value = S.size.h;
+    $('btnExport').textContent = 'Exportar ' + FORMATS[S.format].label;
+
+    const name = { linear:'Linear', corners:'Cantos', mesh:'Mesh' }[S.type];
+    $('dims').textContent = S.size.w + ' × ' + S.size.h + ' px, ' + name.toLowerCase() + ', ' + n + ' cores';
+  }
+  function renderAll(){
+    sel = clamp(sel, 0, count() - 1);
+    layoutBox(); renderList(); renderMarkers(); updateControls(); draw();
+  }
+
+  /* ---------- exportação ---------- */
+  function say(msg, err){ const s = $('status'); s.textContent = msg; s.classList.toggle('err', !!err); }
+  const tick = () => new Promise(r => setTimeout(r, 0));
+
+  let dlPromise = null;
+  function getDownloads(){
+    if(!dlPromise){
+      const c = window.claude;
+      dlPromise = (c && typeof c.use === 'function')
+        ? c.use('downloads').then(x => x || null, () => null)
+        : Promise.resolve('anchor');
+    }
+    return dlPromise;
+  }
+
+  let busy = false;
+  async function exportImage(){
+    if(busy) return;
+    const btn = $('btnExport');
+    busy = true; btn.disabled = true;
+    say('Preparando a exportação');
+    try {
+      const dl = await getDownloads();
+      if(dl === null){ say('Salvar arquivos não está disponível nesta visualização.', true); return; }
+
+      const W = S.size.w, H = S.size.h, fmt = FORMATS[S.format];
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const ctx = cv.getContext('2d');
+      if(!ctx) throw new Error('size');
+      const cfg = buildCfg(W, H);
+      const rowsPer = Math.max(1, Math.floor(1200000 / W));
+      for(let y = 0; y < H; y += rowsPer){
+        const rows = Math.min(rowsPer, H - y), img = ctx.createImageData(W, rows);
+        renderRows(img.data, W, H, y, rows, cfg);
+        ctx.putImageData(img, 0, y);
+        say('Renderizando ' + Math.round((y + rows) / H * 100) + '%');
+        await tick();
+      }
+      say('Codificando ' + fmt.label);
+      await tick();
+      const blob = await new Promise(r => cv.toBlob(r, fmt.mime, fmt.q));
+      if(!blob) throw new Error('encode');
+      let ext = fmt.ext;
+      if(blob.type && blob.type !== fmt.mime && blob.type === 'image/png') ext = 'png';
+      const name = 'degrade-' + S.type + '-' + W + 'x' + H + '.' + ext;
+
+      if(dl === 'anchor'){
+        const url = URL.createObjectURL(blob), a = document.createElement('a');
+        a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+      } else {
+        await dl.save({ filename:name, data:blob });
+      }
+      say('Salvo: ' + name + (ext !== fmt.ext ? '. Este navegador só gera PNG aqui.' : ''));
+    } catch(err){
+      const code = err && err.code;
+      if(code === 'declined') say('Exportação cancelada.');
+      else if(code === 'rate_limited') say('Já há uma janela de salvamento aberta. Conclua-a e exporte novamente.', true);
+      else if(code === 'too_large') say('Este arquivo é grande demais para salvar aqui. Tente um tamanho menor.', true);
+      else if(code) say('Salvar arquivos não está disponível nesta visualização.', true);
+      else say('Seu navegador não conseguiu criar uma imagem tão grande. Tente um tamanho menor.', true);
+    } finally {
+      busy = false; btn.disabled = false;
+    }
+  }
+  $('btnExport').addEventListener('click', exportImage);
+
+  async function copyText(text){
+    try { await navigator.clipboard.writeText(text); return true; }
+    catch(e){
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      let ok = false; try { ok = document.execCommand('copy'); } catch(_){}
+      ta.remove(); return ok;
+    }
+  }
+  $('btnCss').addEventListener('click', async () => {
+    const st = [...S.linear.stops].sort((a, b) => a.p - b.p);
+    const css = 'background: linear-gradient(' + S.linear.angle + 'deg' + (S.blend === 'oklab' ? ' in oklab' : '') + ', ' +
+      st.map(s => s.c + ' ' + s.p + '%').join(', ') + ');';
+    const ok = await copyText(css), b = $('btnCss');
+    b.classList.toggle('done', ok);
+    setTimeout(() => b.classList.remove('done'), 1300);
+    say(ok ? 'CSS copiado.' : 'Falha ao copiar. Seu navegador bloqueou o acesso à área de transferência.', !ok);
+  });
+
+  /* ---------- início ---------- */
+  if('ResizeObserver' in window) new ResizeObserver(() => draw()).observe($('inner'));
+  else window.addEventListener('resize', () => draw());
+  renderAll();
+})();
+</script>
+</body>
+</html>
